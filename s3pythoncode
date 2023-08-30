@@ -1,0 +1,486 @@
+Amazon Web Services (AWS) SDK for Python:
+
+import boto3
+
+def get_bucket_policy(bucket):
+    s3 = boto3.client('s3')
+    response = s3.get_bucket_policy(Bucket=bucket)
+    return response['Policy']
+
+def put_bucket_policy(bucket, policy):
+    s3 = boto3.client('s3')
+    response = s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+    return True
+
+def delete_bucket_policy(bucket):
+    s3 = boto3.client('s3')
+    response = s3.delete_bucket_policy(Bucket=bucket)
+    return True
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+AWS S3 bucket versioning:
+---------------------------
+
+import boto3
+
+def get_versions(bucket):
+    s3 = boto3.client('s3')
+    response = s3.list_object_versions(Bucket=bucket)
+    return response
+
+def get_versioning(bucket):
+    s3 = boto3.client('s3')
+    response = s3.get_bucket_versioning(Bucket=bucket)
+    if 'Status' in response:
+        return response['Status']
+    else:
+        return None
+
+def put_versioning(bucket, status):
+    s3 = boto3.client('s3')
+    response = s3.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={'Status': status})
+    if 'Status' in response:
+        return response['Status']
+    else:
+        return None
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+S3- Bucket List:
+--------------
+
+import boto3
+
+def bucketlist(add_region=False, **kwargs):
+    s3 = boto3.client('s3')
+    response = s3.list_buckets(**kwargs)
+    buckets = response['Buckets']
+    
+    bucket_list = []
+    for bucket in buckets:
+        bucket_info = {
+            'Bucket': bucket['Name']
+        }
+        if add_region:
+            try:
+                location = s3.get_bucket_location(Bucket=bucket['Name'])
+                bucket_info['Region'] = location['LocationConstraint']
+            except s3.exceptions.NoSuchBucket:
+                bucket_info['Region'] = None
+                
+        bucket_list.append(bucket_info)
+    
+    return bucket_list
+
+# Alias for consistency with R code
+bucket_list_df = bucketlist
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+copying objects in s3:
+---------------------
+
+import boto3
+
+def copy_object(from_object, to_object=None, from_bucket, to_bucket, headers=None, **kwargs):
+    s3 = boto3.client('s3')
+    if to_object is None:
+        to_object = from_object
+        
+    copy_source = {'Bucket': from_bucket, 'Key': from_object}
+    
+    if headers is None:
+        headers = {}
+    
+    response = s3.copy_object(
+        CopySource=copy_source,
+        Bucket=to_bucket,
+        Key=to_object,
+        CopySourceIfNoneMatch='false',
+        CopySourceIfModifiedSince='false',
+        CopySourceIfUnmodifiedSince='false',
+        CopySourceSSECustomerAlgorithm='false',
+        CopySourceSSECustomerKey='false',
+        CopySourceSSECustomerKeyMD5='false',
+        CopySourceSSEKMSKeyId='false',
+        **headers,
+        **kwargs
+    )
+    return response
+
+def copy_bucket(from_bucket, to_bucket, **kwargs):
+    s3 = boto3.client('s3')
+    
+    response = s3.list_objects_v2(Bucket=from_bucket)
+    if 'Contents' in response:
+        objects = response['Contents']
+        for obj in objects:
+            copy_object(obj['Key'], from_bucket=from_bucket, to_bucket=to_bucket, **kwargs)
+
+# Example usage
+# copy_object(from_object='source_key', to_object='destination_key', from_bucket='source_bucket', to_bucket='destination_bucket')
+# copy_bucket(from_bucket='source_bucket', to_bucket='destination_bucket')
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+To be a part of a package for making HTTP requests to Amazon S3 services.
+
+
+import boto3
+from botocore.exceptions import ClientError
+
+def s3HTTP(verb="GET", bucket="", path="", query=None, headers=None, request_body=None, **kwargs):
+    s3 = boto3.client('s3')
+    url = f"https://{bucket}.s3.amazonaws.com{path}"
+    
+    try:
+        if verb == "GET":
+            response = s3.get_object(Bucket=bucket, Key=path.lstrip("/"), **kwargs)
+        elif verb == "HEAD":
+            response = s3.head_object(Bucket=bucket, Key=path.lstrip("/"), **kwargs)
+        elif verb == "DELETE":
+            response = s3.delete_object(Bucket=bucket, Key=path.lstrip("/"), **kwargs)
+        elif verb == "PUT":
+            if request_body is None:
+                response = s3.put_object(Bucket=bucket, Key=path.lstrip("/"), **kwargs)
+            else:
+                response = s3.put_object(Bucket=bucket, Key=path.lstrip("/"), Body=request_body, **kwargs)
+        else:
+            raise ValueError(f"Unsupported verb: {verb}")
+        
+        return response
+        
+    except ClientError as e:
+        print(f"Error: {e.response['Error']['Message']}")
+        return None
+
+# Example usage
+# response = s3HTTP(verb="GET", bucket="my-bucket", path="my-object-key")
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+Amazon S3 bucket replication:
+-----------------------------
+
+import boto3
+
+def get_replication(bucket, **kwargs):
+    s3 = boto3.client('s3')
+    response = s3.get_bucket_replication(Bucket=bucket, **kwargs)
+    return response
+
+def put_replication(bucket, request_body, **kwargs):
+    s3 = boto3.client('s3')
+    response = s3.put_bucket_replication(Bucket=bucket, ReplicationConfiguration=request_body, **kwargs)
+    return response
+
+def delete_replication(bucket, **kwargs):
+    s3 = boto3.client('s3')
+    response = s3.delete_bucket_replication(Bucket=bucket, **kwargs)
+    return response
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+To check whether an Amazon S3 bucket exists and is accessible:
+-------------------------------------------------------------
+
+import boto3
+from botocore.exceptions import ClientError
+
+def bucket_exists(bucket, **kwargs):
+    s3 = boto3.client('s3')
+    
+    try:
+        s3.head_bucket(Bucket=bucket, **kwargs)
+        return True
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == '404':
+            return False
+        else:
+            raise
+
+# Example usage
+# exists = bucket_exists(bucket='my-bucket')
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Amazon S3 bucket acceleration settings:
+
+import boto3
+
+def get_acceleration(bucket, **kwargs):
+    s3 = boto3.client('s3')
+    response = s3.get_bucket_accelerate_configuration(Bucket=bucket, **kwargs)
+    status = response.get('Status', None)
+    return status
+
+def put_acceleration(bucket, status, **kwargs):
+    s3 = boto3.client('s3')
+    response = s3.put_bucket_accelerate_configuration(Bucket=bucket, AccelerateConfiguration={'Status': status}, **kwargs)
+    return response
+
+# Example usage
+# status = get_acceleration(bucket='my-bucket')
+# put_acceleration(bucket='my-bucket', status='Enabled')
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+ACLs (Access Control Lists):
+------------------------------
+
+import boto3
+
+def get_acl(object=None, bucket=None, **kwargs):
+    s3 = boto3.client('s3')
+    
+    if bucket is not None:
+        response = s3.get_bucket_acl(Bucket=bucket, **kwargs)
+        return response
+    
+    if object is not None:
+        bucket_name = object.split('/')[0]
+        object_key = '/'.join(object.split('/')[1:])
+        response = s3.get_object_acl(Bucket=bucket_name, Key=object_key, **kwargs)
+        return response
+
+def putobject_acl(object, bucket=None, **kwargs):
+    s3 = boto3.client('s3')
+    
+    if bucket is None:
+        bucket_name = object.split('/')[0]
+        object_key = '/'.join(object.split('/')[1:])
+        response = s3.put_object_acl(Bucket=bucket_name, Key=object_key, **kwargs)
+        return response
+    else:
+        response = s3.put_bucket_acl(Bucket=bucket, **kwargs)
+        return response
+
+# Example usage
+# acl = get_acl(object='my-bucket/my-object')
+# putobject_acl(object='my-bucket/my-object', acl='public-read')
+# acl = get_acl(bucket='my-bucket')
+# putobject_acl(bucket='my-bucket', acl='private')
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+To delete bucket:
+----------------
+
+Note: Replace "your-bucket-name" with the actual name of the bucket you want to delete, and specify the appropriate region.
+
+import boto3
+
+def delete_bucket(bucket_name, region=None, **kwargs):
+    s3_client = boto3.client('s3', region_name=region, **kwargs)
+    
+    try:
+        s3_client.delete_bucket(Bucket=bucket_name)
+        return True
+    except Exception as e:
+        print(f"Error deleting bucket: {e}")
+        return False
+
+# Example usage
+bucket_name = "your-bucket-name"
+region = "us-east-1"  # Change this to your desired region
+success = delete_bucket(bucket_name, region=region)
+
+if success:
+    print("Bucket deleted successfully.")
+else:
+    print("Bucket deletion failed.")
+
+
+======================================================================================================================================================
+
+You may need to consider alternative serialization formats or data interchange solutions depending on your specific requirements.(S3saveRDS)
+---------------------------------------------
+
+import boto3
+import pickle
+import zlib
+
+def s3saveRDS(x, object_name, bucket_name, compress=True, region=None, **kwargs):
+    s3_client = boto3.client('s3', region_name=region, **kwargs)
+    
+    if compress:
+        serialized_data = zlib.compress(pickle.dumps(x))
+    else:
+        serialized_data = pickle.dumps(x)
+    
+    try:
+        s3_client.put_object(Bucket=bucket_name, Key=object_name, Body=serialized_data)
+        return True
+    except Exception as e:
+        print(f"Error saving RDS object to S3: {e}")
+        return False
+
+def s3readRDS(object_name, bucket_name, region=None, **kwargs):
+    s3_client = boto3.client('s3', region_name=region, **kwargs)
+    
+    try:
+        response = s3_client.get_object(Bucket=bucket_name, Key=object_name)
+        serialized_data = response['Body'].read()
+        
+        try:
+            x = pickle.loads(serialized_data)
+            return x
+        except Exception as e:
+            print(f"Error deserializing RDS object: {e}")
+            return None
+    except Exception as e:
+        print(f"Error reading RDS object from S3: {e}")
+        return None
+
+# Example usage
+bucket_name = 'your-bucket-name'
+object_name = 'mtcars.rds'
+region = 'us-east-1'  # Change this to your desired region
+
+mtcars = ...  # R object you want to save
+
+success = s3saveRDS(mtcars, object_name, bucket_name, compress=True, region=region)
+
+if success:
+    print("RDS object saved successfully.")
+    mtcars_restored = s3readRDS(object_name, bucket_name, region=region)
+    if mtcars_restored is not None:
+        print("RDS object restored successfully.")
+else:
+    print("RDS object saving failed.")
+==========================================================================================================================================================================
+ For managing the website configuration of an S3 bucket:
+------------------------------------------------------
+
+import boto3
+
+def delete_website(bucket_name, region=None, **kwargs):
+    s3_client = boto3.client('s3', region_name=region, **kwargs)
+    
+    try:
+        response = s3_client.delete_bucket_website(Bucket=bucket_name)
+        return response
+    except Exception as e:
+        print(f"Error deleting website configuration: {e}")
+        return False
+
+def put_website(bucket_name, request_body, region=None, **kwargs):
+    s3_client = boto3.client('s3', region_name=region, **kwargs)
+    
+    try:
+        response = s3_client.put_bucket_website(Bucket=bucket_name, WebsiteConfiguration=request_body)
+        return response
+    except Exception as e:
+        print(f"Error putting website configuration: {e}")
+        return None
+
+def get_website(bucket_name, region=None, **kwargs):
+    s3_client = boto3.client('s3', region_name=region, **kwargs)
+    
+    try:
+        response = s3_client.get_bucket_website(Bucket=bucket_name)
+        return response
+    except Exception as e:
+        print(f"Error getting website configuration: {e}")
+        return None
+
+# Example usage
+bucket_name = 'your-bucket-name'
+region = 'us-east-1'  # Change this to your desired region
+
+# Get website configuration
+website_config = get_website(bucket_name, region=region)
+if website_config:
+    print("Website configuration:")
+    print(website_config)
+
+# Define website configuration XML
+website_xml = '''
+<WebsiteConfiguration>
+  <IndexDocument>
+    <Suffix>index.html</Suffix>
+  </IndexDocument>
+  <ErrorDocument>
+    <Key>error.html</Key>
+  </ErrorDocument>
+</WebsiteConfiguration>
+'''
+
+# Put website configuration
+success = put_website(bucket_name, website_xml, region=region)
+if success:
+    print("Website configuration put successfully.")
+
+# Delete website configuration
+delete_success = delete_website(bucket_name, region=region)
+if delete_success:
+    print("Website configuration deleted successfully.")
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+For managing the requestPayment subresource of an S3 bucket:
+----------------------------------------------------------------
+import boto3
+
+def get_requestpayment(bucket_name, region=None, **kwargs):
+    s3_client = boto3.client('s3', region_name=region, **kwargs)
+    
+    try:
+        response = s3_client.get_bucket_request_payment(Bucket=bucket_name)
+        return response
+    except Exception as e:
+        print(f"Error getting requestPayment configuration: {e}")
+        return None
+
+def put_requestpayment(bucket_name, payer, region=None, **kwargs):
+    s3_client = boto3.client('s3', region_name=region, **kwargs)
+    
+    try:
+        response = s3_client.put_bucket_request_payment(Bucket=bucket_name, RequestPaymentConfiguration={'Payer': payer})
+        return response
+    except Exception as e:
+        print(f"Error putting requestPayment configuration: {e}")
+        return None
+
+# Example usage
+bucket_name = 'your-bucket-name'
+region = 'us-east-1'  # Change this to your desired region
+payer = 'BucketOwner'  # Change to 'Requester' if needed
+
+# Get requestPayment configuration
+requestpayment_config = get_requestpayment(bucket_name, region=region)
+if requestpayment_config:
+    print("RequestPayment configuration:")
+    print(requestpayment_config)
+
+# Put requestPayment configuration
+success = put_requestpayment(bucket_name, payer, region=region)
+if success:
+    print("RequestPayment configuration put successfully.")
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
